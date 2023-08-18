@@ -94,7 +94,7 @@ class DatagramProto<Handle> {
 
     // state machine
     var connect_status: () -> ConnectStatus;
-    var peer_connect_status: Int32Array;
+    var peer_connect_status: Int32Array; // todo complete nonsense
     var state: State = Disconnected;
 
     var local_frame_advantage: Int = 0;
@@ -372,8 +372,20 @@ class DatagramProto<Handle> {
         }
     }
 
-    function getPeerConnectStatus(id: Int): ConnectStatus {
+    public function getPeerConnectStatus(id: Int): ConnectStatus {
         return peer_connect_status[id];
+    }
+
+    public function isRunning() {
+        return state.match(Running(_, _, _));
+    }
+
+    public function isInitialized() {
+        return network != null;
+    }
+
+    public function isSynchronized() {
+        return isRunning();   
     }
 
     // TODO all the log functions

@@ -1,9 +1,10 @@
 package gghx;
+import gghx.backend.P2P;
 import haxe.io.Bytes;
 import gghx.backend.Session;
 enum NetworkSide {
     LOCAL;
-    REMOTE(ip: Dynamic); // todo avoid Any
+    REMOTE(ip: String, port: Int);
 }
 
 
@@ -34,7 +35,7 @@ enum abstract Error(Int) { // rather than return error codes, most functions wil
     }
 }
 
-abstract PlayerHandle(Int) { }
+abstract PlayerHandle(Int) from Int to Int { }
 
 enum Event{
     CONNECTED_TO_PEER(player: PlayerHandle);
@@ -56,9 +57,10 @@ interface Callbacks {
     public function onEvent(ev: Event): Void;
 }
 
-class Player {
-    var num: Int;
-    var type: NetworkSide;
+@:structInit class Player {
+    public var num: Int;
+    public var type: NetworkSide;
+    // todo spectators
 }
 
 @:structInit class NetworkStats {
@@ -101,12 +103,14 @@ function mod(a: Int, b: Int) {
 }
 
 
-function startSession(
+function startSession<Handle>(
     cb: Callbacks,
     game_name: String,
     num_players: Int,
+    networking: Networking<Handle>,
+    input_size: Int
 ): Session {
-    throw "TODO";
+    return new P2P(cb, game_name, num_players, input_size, networking);
 }
 
 // todo spectating

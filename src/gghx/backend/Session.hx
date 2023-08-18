@@ -1,5 +1,6 @@
 package gghx.backend;
 import gghx.GGHX.GGError;
+import haxe.ds.Vector;
 import haxe.io.Bytes;
 import gghx.GGHX.Player;
 import gghx.GGHX.PlayerHandle;
@@ -9,7 +10,7 @@ abstract class Session {
     public function doPoll(timeout: Int): Void {}
     public abstract function addPlayer(player: Player): PlayerHandle;
     public abstract function addLocalInput(player: PlayerHandle, values: Bytes): Void; // todo check if Bytes is right
-    public abstract function syncInput(values: Bytes): DisconnectFlags;
+    public abstract function syncInput(): Vector<Null<Bytes>>;
 
     public function incrementFrame(): Void {}
     public function chat(text: String): Void {}

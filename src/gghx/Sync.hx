@@ -60,6 +60,14 @@ class Sync {
         createQueues(config);
     }
 
+    public function inRollback() {
+        return rollingback;
+    }
+
+    public function getFrameCount() {
+        return framecount;
+    }
+
     public function setLastConfirmedFrame(frame: Int) {
         last_confirmed_frame = frame;
         if (last_confirmed_frame > 0) {
@@ -89,7 +97,20 @@ class Sync {
         input_queues[queue].addInput(input);
     }
 
-    public function getConfirmedInputs(): Vector<Null<Bytes>> {
+    public function getConfirmedInputs(frame: Int): Vector<Null<Bytes>> {
+        var res = new Vector(config.num_players);
+        for (i in 0...config.num_players) {
+            if (local_connect_status[i].disconnected && frame > local_connect_status[i].frame) {
+                res.set(i, null);
+            } else {
+                var input = input_queues[i].getInput(frame).input;
+                res.set(i, input.bits.sub(0, input.size));
+            }
+        }
+        return res;
+    }
+
+    public function synchronizeInputs() : Vector<Null<Bytes>> {
         var res = new Vector(config.num_players);
         for (i in 0...config.num_players) {
             if (local_connect_status[i].disconnected && framecount > local_connect_status[i].frame) {
