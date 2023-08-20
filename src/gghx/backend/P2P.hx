@@ -23,32 +23,25 @@ final DEFAULT_DISCONNECT_TIMEOUT = 5000;
 final DEFAULT_DISCONNECT_NOTIFY_START = 750;
 
 class P2P<Handle> extends Session {
-
-    var callbacks: Callbacks;
-	var poll: Poll<Handle>;
-	var sync: Sync;
-    var networking: Datagram<Handle>;
-	var endpoints: Array<DatagramProto<Handle>> = [];
+	var callbacks:Callbacks;
+	var poll:Poll<Handle>;
+	var sync:Sync;
+	var networking:Datagram<Handle>;
+	var endpoints:Array<DatagramProto<Handle>> = [];
 	// TODO spectators
-	var input_size: Int;
+	var input_size:Int;
 
-	var synchronizing: Bool;
-	var num_players: Int;
-	var next_recommend_sleep: Int;
+	var synchronizing:Bool;
+	var num_players:Int;
+	var next_recommend_sleep:Int;
 
-	var next_spectator_frame: Int;
-	var disconnect_timeout: Int;
-	var disonnect_notify_start: Int;
+	var next_spectator_frame:Int;
+	var disconnect_timeout:Int;
+	var disonnect_notify_start:Int;
 
-	var local_connect_status: Array<ConnectStatus> = [];
+	var local_connect_status:Array<ConnectStatus> = [];
 
-	public function new(
-		cb: Callbacks,
-		game_name: String,
-		num_players: Int,
-		input_size: Int,
-		networking: Networking<Handle>
-		) {
+	public function new(cb:Callbacks, game_name:String, num_players:Int, input_size:Int, networking:Networking<Handle>) {
 		this.num_players = num_players;
 		this.input_size = input_size;
 		this.sync = new Sync(local_connect_status);
@@ -68,7 +61,7 @@ class P2P<Handle> extends Session {
 		this.networking = new Datagram();
 		this.networking.init(networking, (msg, handle) -> this.onMsg(handle, msg), poll);
 
-		for(i in 0...num_players) {
+		for (i in 0...num_players) {
 			local_connect_status.push(new ConnectStatus(0));
 			local_connect_status[i].frame = -1;
 			endpoints.push(null);
@@ -77,25 +70,14 @@ class P2P<Handle> extends Session {
 		callbacks.beginGame();
 	}
 
-	function addRemotePlayer(
-		ip: String,
-		port: Int,
-		queue: Int
-	) {
+	function addRemotePlayer(ip:String, port:Int, queue:Int) {
 		synchronizing = true;
-		endpoints[queue] = new DatagramProto(
-			networking,
-			poll,
-			queue,
-			ip,
-			port,
-			num_players,
-			local_connect_status
-		);
+		endpoints[queue] = new DatagramProto(networking, poll, queue, ip, port, num_players, local_connect_status);
 		endpoints[queue].setDisconnectTimeout(disconnect_timeout);
 		endpoints[queue].setDisconnectNotifyStart(disonnect_notify_start);
 		endpoints[queue].synchronize();
 	}
+
 	// todo addSpectator
 
 	override function doPoll(timeout:Int) {
@@ -105,7 +87,7 @@ class P2P<Handle> extends Session {
 			if (!synchronizing) {
 				sync.checkSimulation(timeout);
 				var current_frame = sync.getFrameCount();
-				for(i in endpoints) {
+				for (i in endpoints) {
 					i.setLocalFrameNumber(current_frame);
 				}
 
@@ -119,7 +101,7 @@ class P2P<Handle> extends Session {
 
 				if (current_frame > next_recommend_sleep) {
 					var interval = 0;
-					for(i in endpoints) {
+					for (i in endpoints) {
 						var linterval = i.recommendFrameDelay();
 						interval = if (interval < linterval) linterval else interval;
 					}
@@ -129,23 +111,23 @@ class P2P<Handle> extends Session {
 						next_recommend_sleep = current_frame + RECOMMENDATION_INTERVAL;
 					}
 				}
-				if(timeout > 0) {
+				if (timeout > 0) {
 					// lie
 				}
 			}
 		}
 	}
 
-	public function poll2Players(current_frame: Int): Int {
+	public function poll2Players(current_frame:Int):Int {
 		var one = 1;
 		var total_min_confirmed = one << 31;
-		for(i in 0...num_players) {
+		for (i in 0...num_players) {
 			var queue_connected = true;
 			if (endpoints[i].isRunning()) {
 				queue_connected = !endpoints[i].getPeerConnectStatus(i).disconnected;
 			}
 
-			if(!local_connect_status[i].disconnected) {
+			if (!local_connect_status[i].disconnected) {
 				var last_frame = local_connect_status[i].frame;
 				total_min_confirmed = if (total_min_confirmed < last_frame) total_min_confirmed else last_frame;
 			}
@@ -161,7 +143,7 @@ class P2P<Handle> extends Session {
 		return total_min_confirmed;
 	}
 
-	public function pollNPlayers(current_frame: Int): Int {
+	public function pollNPlayers(current_frame:Int):Int {
 		throw new GGError(UNSUPPORTED);
 		// TODO
 	}
@@ -178,7 +160,7 @@ class P2P<Handle> extends Session {
 			case REMOTE(ip, port):
 				addRemotePlayer(ip, port, queue);
 			default:
-				endpoints[queue] = new DatagramProto(null, poll, queue, null, null, 0,  null);
+				endpoints[queue] = new DatagramProto(null, poll, queue, null, null, 0, null);
 		}
 
 		return res;
@@ -190,7 +172,7 @@ class P2P<Handle> extends Session {
 			throw new GGError(IN_ROLLBACK);
 		}
 
-		if(synchronizing) {
+		if (synchronizing) {
 			throw new GGError(NOT_SYNCHRONIZED);
 		}
 
@@ -205,16 +187,16 @@ class P2P<Handle> extends Session {
 			trace('setting local connect status for local queue $queue to ${input.frame}');
 			local_connect_status[queue].frame = input.frame;
 
-			for(i in 0...num_players) {
-				if(endpoints[i].isInitialized()) {
+			for (i in 0...num_players) {
+				if (endpoints[i].isInitialized()) {
 					endpoints[i].sendInput(input);
 				}
 			}
 		}
 	}
 
-	public function syncInput(): Vector<Null<Bytes>> {
-		if(synchronizing) {
+	public function syncInput():Vector<Null<Bytes>> {
+		if (synchronizing) {
 			throw new GGError(NOT_SYNCHRONIZED);
 		}
 		return sync.synchronizeInputs();
@@ -232,16 +214,16 @@ class P2P<Handle> extends Session {
 	}
 
 	public function pollDatagramProtocolEvents() {
-		for(i in 0...num_players) {
+		for (i in 0...num_players) {
 			var evt;
-			while((evt = endpoints[i].getEvent()) != null) {
+			while ((evt = endpoints[i].getEvent()) != null) {
 				onDatagramProtocolPeerEvent(evt, i);
 			}
 			// todo spectators
 		}
 	}
 
-	public function onDatagramProtocolPeerEvent(evt: Event, queue: Int) {
+	public function onDatagramProtocolPeerEvent(evt:Event, queue:Int) {
 		onDatagramProtocolEvent(evt, queueToPlayerHandle(queue));
 		switch (evt) {
 			case Input(input):
@@ -265,8 +247,8 @@ class P2P<Handle> extends Session {
 
 	// todo spectator
 
-	public function onDatagramProtocolEvent(evt: Event, handle: PlayerHandle) {
-		switch(evt) {
+	public function onDatagramProtocolEvent(evt:Event, handle:PlayerHandle) {
+		switch (evt) {
 			case Connected:
 				callbacks.onEvent(CONNECTED_TO_PEER(handle));
 			case Synchronizing(total, count):
@@ -283,7 +265,7 @@ class P2P<Handle> extends Session {
 		}
 	}
 
-	public override function disconnectPlayer(player: PlayerHandle) {
+	public override function disconnectPlayer(player:PlayerHandle) {
 		var queue = playerHandleToQueue(player);
 		if (local_connect_status[queue].disconnected) {
 			throw new GGError(PLAYER_DISCONNECTED);
@@ -294,7 +276,7 @@ class P2P<Handle> extends Session {
 			var current_frame = sync.getFrameCount();
 			trace('disconnecting local player $queue at frame ${local_connect_status[queue].frame} by user request');
 
-			for(i in 0...num_players) {
+			for (i in 0...num_players) {
 				if (endpoints[i].isInitialized()) {
 					disconnectPlayerQueue(i, current_frame);
 				}
@@ -305,7 +287,7 @@ class P2P<Handle> extends Session {
 		}
 	}
 
-	public function disconnectPlayerQueue(queue: Int, syncto: Int) {
+	public function disconnectPlayerQueue(queue:Int, syncto:Int) {
 		var framecount = sync.getFrameCount();
 		endpoints[queue].disconnect();
 
@@ -330,7 +312,7 @@ class P2P<Handle> extends Session {
 		return endpoints[queue].getNetworkStats();
 	}
 
-	public override function setFrameDelay(player: PlayerHandle, delay: Int) {
+	public override function setFrameDelay(player:PlayerHandle, delay:Int) {
 		sync.setFrameDelay(playerHandleToQueue(player), delay);
 	}
 
@@ -352,7 +334,7 @@ class P2P<Handle> extends Session {
 		}
 	}
 
-	function playerHandleToQueue(player: PlayerHandle): Int {
+	function playerHandleToQueue(player:PlayerHandle):Int {
 		var offset = player - 1;
 		if (offset < 0 || offset >= num_players) {
 			throw new GGError(INVALID_PLAYER_HANDLE);
@@ -360,7 +342,7 @@ class P2P<Handle> extends Session {
 		return offset;
 	}
 
-	function onMsg(from: Handle, msg: Msg) {
+	function onMsg(from:Handle, msg:Msg) {
 		for (i in 0...num_players) {
 			if (endpoints[i].handlesMsg(msg, from)) {
 				endpoints[i].onMsg(msg);
@@ -380,10 +362,10 @@ class P2P<Handle> extends Session {
 			// todo spectators
 			callbacks.onEvent(RUNNING);
 			synchronizing = false;
-		}	
+		}
 	}
 
-	public function queueToPlayerHandle(queue: Int) : PlayerHandle {
+	public function queueToPlayerHandle(queue:Int):PlayerHandle {
 		return queue + 1;
 	}
 }
