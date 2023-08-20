@@ -37,6 +37,7 @@ From a code perspective, you need to implement two interfaces:
 
 and call the following public functions at appropriate times, once again, see the dev guide and the example. (TODO more comments in the example)
 ### Mapping from GGPO public API to GGHX public API
+
 | GGPO API | GGHX API | note |
 --------------------------------
 | GGPOSessionCallbacks | Callbacks | Using an interface rather than function pointers | 
