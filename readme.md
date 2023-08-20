@@ -39,7 +39,7 @@ and call the following public functions at appropriate times, once again, see th
 ### Mapping from GGPO public API to GGHX public API
 
 | GGPO API | GGHX API | note |
---------------------------------
+|----------|----------|------|
 | GGPOSessionCallbacks | Callbacks | Using an interface rather than function pointers | 
 | GGPOSession | Session | |
 | ggponet_start_session | startSession | also needs the Networking object |
