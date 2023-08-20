@@ -60,8 +60,6 @@ class Poll<Handle> {
         }
     }
     public function pump(timeout: Int): Bool {
-        var i: Int;
-        var res: Int;
         var finished: Bool = false;
 
         if (start_time == 0) {

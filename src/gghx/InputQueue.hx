@@ -24,7 +24,7 @@ class InputQueue {
 
     var frame_delay: Int = 0;
 
-    var inputs: Vector<GameInput> = new Vector(INPUT_QUEUE_LENGTH, new GameInput());
+    var inputs: Vector<GameInput> = new Vector(INPUT_QUEUE_LENGTH, null);
     var prediction: GameInput = new GameInput();
 
     public function new(id: Int, input_size: Int) {
@@ -55,7 +55,7 @@ class InputQueue {
         } else {
             var offset = frame - inputs[tail].frame + 1;
             trace('difference of $offset frames');
-            assert(offset > 0);
+            assert(offset >= 0);
             tail = (tail + offset) % INPUT_QUEUE_LENGTH;
             length -= offset;
         }
@@ -78,7 +78,8 @@ class InputQueue {
         if (inputs[offset].frame != requested_frame) {
             return null;
         }
-        return inputs[offset];
+
+        return inputs[offset].copy();
     }
 
     public function getInput(requested_frame: Int): GetInputOut {
@@ -96,7 +97,7 @@ class InputQueue {
                 assert(inputs[offset].frame == requested_frame);
                 var input = inputs[offset];
                 trace('returning confirmed frame number ${input.frame}');
-                return {isConfirmed: true, input: input};
+                return {isConfirmed: true, input: input.copy()};
             }
 
             if (requested_frame == 0) {
@@ -107,7 +108,7 @@ class InputQueue {
                 prediction.erase();
             } else {
                 trace('basic new prediction on previous frame (queue entry:${prev_frame(head)} frame:${inputs[prev_frame(head)].frame})');
-                prediction = inputs[prev_frame(head)];
+                prediction = inputs[prev_frame(head)].copy();
             }
             prediction.frame++;
         }
@@ -120,10 +121,10 @@ class InputQueue {
     }
 
     public function addInput(input: GameInput) {
-        trace('adding input frame number ${input.frame} to queue');
+        trace('adding input frame number ${input.frame} to queue, last $last_user_added_frame');
 
 
-        assert(last_user_added_frame == -1 || input.frame == last_added_frame + 1);
+        assert(last_user_added_frame == -1 || input.frame == last_user_added_frame + 1);
         last_user_added_frame = input.frame;
         var new_frame = advanceQueueHead(input.frame);
         if(new_frame != -1) {
@@ -134,14 +135,15 @@ class InputQueue {
     }
 
     public function addDelayedInputToQueue(input: GameInput, frame: Int) {
-        trace('adding delayed input frame $frame to queue');
+        trace('adding delayed input frame $frame to queue, last $last_added_frame');
 
         assert(input.size == prediction.size);
         assert(last_added_frame == -1 || frame == last_added_frame + 1);
         assert(frame == 0 || inputs[prev_frame(head)].frame == frame - 1);
 
-        inputs[head] = input;
-        inputs[head].frame = frame;
+        inputs[head] = new GameInput();
+        inputs[head].init(frame, input.bits.sub(0, input.size));
+        trace('added input at ${head} with frame:$frame');
         head = (head + 1) % INPUT_QUEUE_LENGTH;
         length++;
         first_frame = false;
@@ -169,7 +171,8 @@ class InputQueue {
 
     public function advanceQueueHead(frame: Int): Int {
         trace('advancing queue head to frame $frame', '');
-        var expected_frame = first_frame ? 0 : inputs[prev_frame(head)].frame + 1;
+        trace('  head at $head, prev at ${prev_frame(head)}, framenum there at ${inputs[prev_frame(head)].frame}');
+        var expected_frame = first_frame ? 0 : (inputs[prev_frame(head)].frame + 1);
 
         frame += frame_delay;
         if (expected_frame > frame) {

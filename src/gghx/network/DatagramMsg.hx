@@ -1,12 +1,11 @@
 package gghx.network;
 
-import haxe.xml.Access;
-import haxe.io.UInt8Array;
-import haxe.io.Int32Array;
-import haxe.ds.Vector;
 import haxe.Int32;
+import haxe.io.Bytes;
 
-abstract ConnectStatus(Int32) from Int32 {
+final MAX_COMPRESSED_BITS = 8192; // more than GGPO, since haxe packing will likely be less efficient
+
+abstract ConnectStatus(Int32) from Int32 to Int {
     public function new(i: Int32) {
         this = i;
     }
@@ -39,13 +38,13 @@ enum MsgData {
     SyncReply(random_reply: Int32);
     QualityReport(frame_advantage: Int, ping: Int);
     QualityReply(pong: Int);
-    Input(peer_connect_status: Int32Array, start_frame: Int32, local_status: ConnectStatus, num_bits: Int, input_size: Int, bits: UInt8Array);
+    Input(peer_connect_status: Bytes, start_frame: Int32, dc_and_ack_frame: ConnectStatus, num_bits: Int, input_size: Int, bits: Bytes);
     KeepAlive;
     InputAck(ack_frame: Int32);
 }
 
 @:structInit class Msg implements hxbit.Serializable {
-    public var magic: Int;
-    public var sequence_number: Int;
-    public var data: MsgData;
+    @:s public var magic: Int;
+    @:s public var sequence_number: Int;
+    @:s public var data: MsgData;
 }

@@ -9,7 +9,7 @@ enum NetworkSide {
 
 
 class GGError extends haxe.Exception {
-    var error: Error;
+    public var error: Error;
     public function new(error: Error) {
         super(this.error.message());
         this.error = error;
@@ -87,9 +87,8 @@ interface Networking<Handle> {
     function handleEqual(one: Handle, two: Handle): Bool; 
     function newRemote(ip: String, port: Int): Handle;
     function send(data: Bytes, to: Handle): Void;
-    function recv(): Array<{data: Bytes, from: Handle}>;
+    function recv(): Null<{data: Bytes, from: Handle}>;
     function poll(handles: Array<Handle>, timeout: Int): Null<Int>; // todo figure out, not used in ggpo itself
-    function getStats(): NWStats;
 }
 
 

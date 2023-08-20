@@ -1,8 +1,9 @@
 package gghx.network;
+import gghx.network.DatagramMsg.MAX_COMPRESSED_BITS;
+import haxe.io.UInt32Array;
 import gghx.GGHX.NetworkStats;
 import hxbit.Serializer;
 import haxe.io.UInt8Array;
-import haxe.io.BytesData;
 import haxe.io.Int32Array;
 import haxe.io.Bytes;
 import gghx.GameInput.MAX_BYTES;
@@ -10,7 +11,6 @@ import gghx.GameInput.MAX_PLAYERS;
 import gghx.Assert.assert;
 import haxe.io.BytesBuffer;
 import gghx.network.DatagramMsg.MsgData;
-import vdom.Query;
 import gghx.network.DatagramMsg.ConnectStatus;
 import gghx.network.DatagramMsg.Msg;
 import gghx.GGHX.NWStats;
@@ -72,7 +72,7 @@ private enum State {
 }
 
 class DatagramProto<Handle> {
-    var network: Networking<Handle> = null;
+    var network: Datagram<Handle> = null;
     var remote: Handle;
     var magic_number: Int = 0;
     var queue: Int = -1;
@@ -82,19 +82,19 @@ class DatagramProto<Handle> {
     var oo_packet: OOPacket<Handle>;
     var oop_percent: Int;
 
-    var send_queue: Queue<QueueEntry<Handle>> = new Queue(128, null);
+    var send_queue: Queue<QueueEntry<Handle>> = new Queue(128, () -> null);
 
 
     // stats
-    var round_trip_time: Int;
+    var round_trip_time: Int = 0;
     var packets_sent: Int = 0;
     var bytes_sent: Int = 0;
     var kbps_sent: Int;
     var stats_start_time: Int = 0;
 
     // state machine
-    var connect_status: () -> ConnectStatus;
-    var peer_connect_status: Int32Array; // todo complete nonsense
+    var local_connect_status: Array<ConnectStatus>;
+    var peer_connect_status: Int32Array;
     var state: State = Disconnected;
 
     var local_frame_advantage: Int = 0;
@@ -116,28 +116,38 @@ class DatagramProto<Handle> {
     var next_send_seq: Int = 0;
     var next_recv_seq: Int = 0;
 
-    var timesync: TimeSync;
+    var timesync: TimeSync = new TimeSync();
 
     var event_queue: Queue<Event> = new Queue(64, () -> Event.Unknown);
 
     public function new(
-        network: Networking<Handle>,
+        network: Datagram<Handle>,
         poll: Poll<Handle>,
         queue: Int,
         ip: String,
         port: Int,
-        connect_status: () -> ConnectStatus,
+        num_players: Int,
+        connect_status: Array<ConnectStatus>
     ) {
-        this.network = network;
-        this.connect_status = connect_status;
+        if (network != null) {
+            this.network = network;
+            this.remote = network.newRemote(ip, port);
+        }
+        this.local_connect_status = connect_status;
+        this.queue = queue;
 
-        this.remote = network.newRemote(ip, port);
+        var pcs: Array<ConnectStatus> = [];
+        for(i in 0...num_players) {
+            pcs.push(0);
+            pcs[i].frame = -1;
+        }
+        peer_connect_status = Int32Array.fromArray(pcs.map((a) -> cast(a, Int)));
 
         do {
             magic_number = Std.int(Math.random() * (1 << 16));
         } while (magic_number == 0);
         oo_packet = {send_time: 0, msg: null, dest_addr: null};
-        send_latency = 0;
+        send_latency = 400;
         oop_percent = 0;
         poll.registerLoop({onLoopPoll: (_) -> {
                 this.onLoopPoll();
@@ -157,37 +167,43 @@ class DatagramProto<Handle> {
 
     function sendPendingInput() {
         var front = pending_output.front();
-        var msg_bits = Bytes.alloc(MAX_PLAYERS * MAX_BYTES);
+        var msg_bits = Bytes.alloc(MAX_COMPRESSED_BITS);
         var offset = 0;
         if (front != null) {
             var last = last_acked_input;
-            var buf = new BytesBuffer();
             assert(last.is_null() || last.frame + 1 == front.frame);
             for (current in pending_output) {
-                if (last.is_null() || current.bits.compare(last.bits) != 0) {
-                    for(i in 0...current.bits.length) {
-                        if (last.is_null() || last.value(i) == current.value(i)) {
+                if (current.bits.compare(last.bits) != 0) {
+                    trace('##diff ', current.bits.toHex(), 'vs', last.bits.toHex());
+                    for(i in 0...current.bits.length * 8) {
+                        if (last.value(i) != current.value(i)) {
+                            trace('  ##diff at $i', current.value(i), last.value(i), 'at $offset');
                             offset = msg_bits.setBit(offset);
                             offset = (if (current.value(i)) msg_bits.setBit else msg_bits.clearBit)(offset);
                             offset = msg_bits.writeByte(i, offset);
                         }
                     }
+                    trace('##compressed to', msg_bits.sub(0, Math.ceil(offset / 8)).toHex());
                 }
                 offset = msg_bits.clearBit(offset);
                 last = last_sent_input = current;
             }
         } 
+        //todo this should be local connect status
         var peer_connect_status_cp = Bytes.alloc(peer_connect_status.view.byteLength);
         peer_connect_status_cp.blit(0, peer_connect_status.view.buffer, 0, peer_connect_status_cp.length);
+        var status = new ConnectStatus(0);
+        status.disconnected = state.match(Disconnected);
+        status.frame = last_received_input.frame; // ack frame
         var msg: MsgData = MsgData.Input(
-            Int32Array.fromBytes(peer_connect_status_cp),
+            peer_connect_status_cp,
             if (front != null) front.frame else 0,
-            connect_status(),
+            status,
             offset,
             if (front != null) front.size else 0,
-            UInt8Array.fromBytes(msg_bits)
+            msg_bits.sub(0, Std.int(offset / 8) + 1)
         );
-        assert(offset < 4096);
+        assert(offset < MAX_COMPRESSED_BITS);
         sendMsg(msg);
     }
 
@@ -267,7 +283,8 @@ class DatagramProto<Handle> {
             case Syncing(v, _):
                 state = Syncing(v, random = Std.int(Math.random() * 0xFFFF));
             default:
-                throw assert(false);
+                assert(false);
+                throw false;
         }
         sendMsg(SyncRequest(random, 0, 0)); // TODO figure out why these are zero/where they get set
     }
@@ -299,7 +316,6 @@ class DatagramProto<Handle> {
     }
 
     public function onMsg(msg: Msg) {
-        var handled = false;
         var seq = msg.sequence_number;
         if (!msg.data.match(SyncRequest(_,_,_)) && !msg.data.match(SyncReply(_))) {
             if (msg.magic != remote_magic_number) {
@@ -322,8 +338,8 @@ class DatagramProto<Handle> {
                 onSyncRequest(msg, random_request, remote_magic, remote_endpoint);
             case SyncReply(random_reply):
                 onSyncReply(msg, random_reply);
-            case Input(peer_connect_status, start_frame, local_status, num_bits, input_size, bits):
-                onInput(msg, peer_connect_status, start_frame, local_status, num_bits, input_size, bits);
+            case Input(peer_connect_status, start_frame, dc_and_ack_frame, num_bits, input_size, bits):
+                onInput(msg, Int32Array.fromBytes(peer_connect_status), start_frame, dc_and_ack_frame.disconnected, dc_and_ack_frame.frame, num_bits, input_size, bits);
             case QualityReport(frame_advantage, ping):
                 onQualityReport(msg, frame_advantage, ping);
             case KeepAlive:
@@ -349,19 +365,19 @@ class DatagramProto<Handle> {
         }
 
         var total_bytes_sent = bytes_sent + (UDP_HEADER_SIZE * packets_sent); // inaccurate if not udp
-        var seconds = (nowv - stats_start_time) / 1000;
+        var seconds = (nowv - stats_start_time) / 1000 + 0.0001;
         var bps = total_bytes_sent / seconds;
-        var overhead = 100 * (UDP_HEADER_SIZE * packets_sent) / bytes_sent;
+        var overhead = 100 * (UDP_HEADER_SIZE * packets_sent) / (bytes_sent + 0.0001);
         kbps_sent = Std.int(bps / 1024);
         trace("Network stats -- ",
             'Bandwidth $kbps_sent KBps  ', 
-            'Packets sent $packets_sent (${1000 * packets_sent / (nowv - stats_start_time)} pps) ',
+            'Packets sent $packets_sent (${1000 * packets_sent / (nowv - stats_start_time + 0.0001)} pps) ',
             'KB sent: ${total_bytes_sent / 1024}'
         );
     }
 
     function queueEvent(ev: Event) {
-        trace("Queing event", ev);
+        trace('Queing event from $queue', ev);
         event_queue.push(ev);
     }
 
@@ -441,12 +457,13 @@ class DatagramProto<Handle> {
     public function onInput(msg: Msg, 
         remote_status: Int32Array,
         start_frame: Int,
-        local_status: ConnectStatus,
+        disconnected: Bool,
+        ack_frame: Int,
         num_bits: Int,
         input_size: Int,
-        bits: UInt8Array
+        bits: Bytes
     ) {
-        if(local_status.disconnected) {
+        if(disconnected) {
             if (!state.match(Disconnected) && !disconnect_event_sent) {
                 trace("Disconnecting endpoint on remote request");
                 queueEvent(Disconnected);
@@ -460,37 +477,45 @@ class DatagramProto<Handle> {
                 assert(cs.frame >= lcs.frame);
                 lcs.disconnected = lcs.disconnected || cs.disconnected;
                 lcs.frame = if (lcs.frame > cs.frame) lcs.frame else cs.frame;
+                peer_connect_status.set(i, lcs);
             }
         }
-
         var last_received_frame = last_received_input.frame;
         if (num_bits > 0) {
             var offset = 0;
-            var bytes:Bytes = bits.view.buffer;
             var current_frame = start_frame;
             if(last_received_input.is_null()) {
-                last_received_input.init(start_frame - 1, Bytes.ofString(""), 0);
+                trace('starting at ${start_frame -1}');
+                last_received_input.frame = start_frame - 1;
             }
             last_received_input.size = input_size;
             while (offset < num_bits) {
+                trace('asserting with $current_frame and ${last_received_input.frame}');
                 assert(current_frame <= last_received_input.frame + 1);
-                var use_inputs = current_frame == last_received_input.frame;
-                while (bytes.readBit(offset++)) {
-                    var on = bytes.readBit(offset++);
-                    var button = bytes.readByte(offset);
+                var use_inputs = current_frame == last_received_input.frame + 1;
+                if (use_inputs) {
+                    trace('##parsing $num_bits bits from', bits.toHex(), 'started at $offset');
+                }
+                while (bits.readBit(offset++)) {
+                    var on = bits.readBit(offset++);
+                    var button = bits.readByte(offset);
                     offset += 8;
                     if (use_inputs) {
+                        trace('  ##diff', offset - 10, on, 'at', button);
                         if (on) {
                             last_received_input.set(button);
                         } else {
+                            trace('##clear', button);
                             last_received_input.clear(button);
                         }
                     }
                 }
-                assert(offset < num_bits);
+                assert(offset <= num_bits);
                 if (use_inputs) {
                     assert(current_frame == last_received_input.frame + 1);
                     last_received_input.frame = current_frame;
+
+                    trace('##using', last_received_input.bits.toHex());
 
                     var desc = last_received_input.desc();
                     switch(state) {
@@ -500,7 +525,7 @@ class DatagramProto<Handle> {
                             assert(false);
                     }
                     trace('sending frame $current_frame to emu queue $queue ($desc)');
-                    queueEvent(Input(last_received_input));
+                    queueEvent(Input(last_received_input.copy()));
                 } else {
                     trace('Skipping past frame: ($current_frame) current is ${last_received_input.frame}');
                 }
@@ -508,7 +533,7 @@ class DatagramProto<Handle> {
             }
         }
         assert(last_received_input.frame >= last_received_frame);
-        while(pending_output.length > 0 && pending_output.front().frame < local_status.frame) {
+        while(pending_output.length > 0 && pending_output.front().frame < ack_frame) {
             trace('Throwing away pending output frame ${pending_output.front().frame}');
             last_acked_input = pending_output.pop();
         }
@@ -580,7 +605,6 @@ class DatagramProto<Handle> {
     public function pumpSendQueue() {
         var entry = send_queue.front();
         while(entry != null) {
-            entry = send_queue.front();
             if (send_latency > 0) {
                 var jitter = (send_latency * 2 / 3) + (Std.int(Math.random() * send_latency) / 3);
                 if (now() < entry.queue_time + jitter) {
@@ -596,13 +620,14 @@ class DatagramProto<Handle> {
             } else {
                 assert(entry.dest_addr != null);
 
-                network.send(Serializer.save(entry.msg), entry.dest_addr);
+                network.sendTo(Serializer.save(entry.msg), entry.dest_addr);
             }
             send_queue.pop();
+            entry = send_queue.front();
         }
         if (oo_packet.msg != null && oo_packet.send_time < now()) {
             trace("sending rogue oop");
-            network.send(Serializer.save(oo_packet.msg), oo_packet.dest_addr);
+            network.sendTo(Serializer.save(oo_packet.msg), oo_packet.dest_addr);
             oo_packet.msg = null;
         }
     }

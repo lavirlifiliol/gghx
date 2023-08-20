@@ -31,11 +31,17 @@ class GameInput {
             trace('sizes don\'t match ${bits.length} vs. ${other.bits.length}');
         }
         if (bits.compare(other.bits) != 0) {
-            trace('bits don\'t match');
+            trace('bits don\'t match', bits.toHex(), 'vs', other.bits.toHex());
         }
         return (bitsonly || frame == other.frame) &&
           bits.length == other.bits.length &&
           bits.compare(other.bits) == 0;
+    }
+
+    public function copy(): GameInput {
+        var res = new GameInput();
+        res.init(frame, bits.sub(0, size));
+        return res;
     }
 
     public function init(frame: Int, bits: Null<Bytes>, offset: Int = 0) {
@@ -54,7 +60,7 @@ class GameInput {
         bits.set(Std.int(i/8),bits.get(Std.int(i/8)) | (1 << (i % 8)));
     }
     public function clear(i: Int): Void {
-        bits.set(Std.int(i/8),bits.get(Std.int(i/8)) | (1 << (i % 8)));
+        bits.set(Std.int(i/8),bits.get(Std.int(i/8)) & ~(1 << (i % 8)));
     }
     public function erase() {
         bits.fill(0, bits.length, 0);

@@ -38,13 +38,13 @@ class Sync {
     var config: Config;
 
     var rollingback: Bool;
-    var last_confirmed_frame: Int;
+    var last_confirmed_frame: Int = 0;
     var framecount: Int = 0;
     var max_prediction_frames: Int = 0;
 
     var input_queues: Array<InputQueue> = [];
 
-    var event_queue: Queue<SyncEvent> = new Queue(32, null);
+    var event_queue: Queue<SyncEvent> = new Queue(32, () -> null);
     var local_connect_status: Array<ConnectStatus>;
 
     public function new(connect_status: Array<ConnectStatus>) {
@@ -143,6 +143,12 @@ class Sync {
         rollingback = true;
         loadFrame(seek_to);
         assert(this.framecount == seek_to);
+
+        resetPrediction(this.framecount);
+        for ( _ in 0...count) {
+            callbacks.advanceFrame();
+        }
+        assert(this.framecount == framecount);
         rollingback = false;
         trace("-------");
     }
@@ -163,15 +169,12 @@ class Sync {
     }
 
     public function saveCurrentFrame() {
-        var state = saved_state.frames[saved_state.head];
-        state.frame = framecount;
-        var res = callbacks.saveGameState(state.frame);
-        state.buf = res.state;
-        state.checksum = state.checksum;
-
+        var res = callbacks.saveGameState(framecount);
+        saved_state.frames.set(saved_state.head, {buf:res.state, frame: framecount, checksum: res.checksum});
+        var state = saved_state.frames.get(saved_state.head);
         trace('=== Saved frame info ${state.frame} (size:${state.buf.length} checksum${state.checksum})');
 
-        saved_state.head = (saved_state.head) % saved_state.frames.length;
+        saved_state.head = (saved_state.head + 1) % saved_state.frames.length;
     }
     
     public function getLastSavedState() {
@@ -184,11 +187,12 @@ class Sync {
 
     public function findSavedFrameIndex(frame: Int): Int {
         for(i in 0...saved_state.frames.length) {
-            if (saved_state.frames[i].frame == frame) {
+            if (saved_state.frames[i] != null && saved_state.frames[i].frame == frame) {
                 return i;
             }
         }
-        throw assert(false);
+        assert(false);
+        throw false;
     }
 
     public function createQueues(config: Config) {
@@ -229,5 +233,9 @@ class Sync {
     // unused, queue is never pushed to
     public function getEvent(): Null<SyncEvent> {
         return event_queue.pop();
+    }
+
+    static public function main() {
+        trace('hi');
     }
 }

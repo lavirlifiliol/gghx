@@ -13,6 +13,7 @@ import gghx.GGHX.Networking;
 import gghx.GGHX.Callbacks;
 import gghx.GGHX.Player;
 import gghx.GGHX.PlayerHandle;
+import gghx.network.Datagram;
 import haxe.io.Bytes;
 import gghx.backend.Session.DisconnectFlags;
 import gghx.GGHX.NetworkStats;
@@ -26,8 +27,8 @@ class P2P<Handle> extends Session {
     var callbacks: Callbacks;
 	var poll: Poll<Handle>;
 	var sync: Sync;
-    var networking: Networking<Handle>;
-	var endpoints: Array<DatagramProto<Handle>>;
+    var networking: Datagram<Handle>;
+	var endpoints: Array<DatagramProto<Handle>> = [];
 	// TODO spectators
 	var input_size: Int;
 
@@ -56,6 +57,7 @@ class P2P<Handle> extends Session {
 		this.callbacks = cb;
 		this.synchronizing = true;
 		this.next_recommend_sleep = 0;
+		this.poll = new Poll(networking);
 		sync.init({
 			num_players: num_players,
 			input_size: input_size,
@@ -63,10 +65,11 @@ class P2P<Handle> extends Session {
 			callbacks: callbacks
 		});
 
-		this.networking = networking;
+		this.networking = new Datagram();
+		this.networking.init(networking, (msg, handle) -> this.onMsg(handle, msg), poll);
 
 		for(i in 0...num_players) {
-			local_connect_status.push(0);
+			local_connect_status.push(new ConnectStatus(0));
 			local_connect_status[i].frame = -1;
 			endpoints.push(null);
 		}
@@ -86,7 +89,8 @@ class P2P<Handle> extends Session {
 			queue,
 			ip,
 			port,
-			() -> local_connect_status[queue],
+			num_players,
+			local_connect_status
 		);
 		endpoints[queue].setDisconnectTimeout(disconnect_timeout);
 		endpoints[queue].setDisconnectNotifyStart(disonnect_notify_start);
@@ -111,6 +115,7 @@ class P2P<Handle> extends Session {
 					// todo spectactors
 				}
 				trace('setting confirmed frame in sync to $total_min_confirmed');
+				sync.setLastConfirmedFrame(total_min_confirmed);
 
 				if (current_frame > next_recommend_sleep) {
 					var interval = 0;
@@ -132,7 +137,8 @@ class P2P<Handle> extends Session {
 	}
 
 	public function poll2Players(current_frame: Int): Int {
-		var total_min_confirmed = 1 << 31;
+		var one = 1;
+		var total_min_confirmed = one << 31;
 		for(i in 0...num_players) {
 			var queue_connected = true;
 			if (endpoints[i].isRunning()) {
@@ -172,7 +178,7 @@ class P2P<Handle> extends Session {
 			case REMOTE(ip, port):
 				addRemotePlayer(ip, port, queue);
 			default:
-
+				endpoints[queue] = new DatagramProto(null, poll, queue, null, null, 0,  null);
 		}
 
 		return res;
@@ -214,8 +220,8 @@ class P2P<Handle> extends Session {
 		return sync.synchronizeInputs();
 	}
 
-	public function inrecementFrame() {
-		trace('End of frame (${sync.getFrameCount()})');
+	public override function incrementFrame() {
+		trace('!!!!!!!!!!!!!!!!!!!End of frame (${sync.getFrameCount()})');
 		sync.incrementFrame();
 		doPoll(0);
 		pollSyncEvents();
@@ -239,13 +245,16 @@ class P2P<Handle> extends Session {
 		onDatagramProtocolEvent(evt, queueToPlayerHandle(queue));
 		switch (evt) {
 			case Input(input):
+				trace('handling input in $queue', input);
 				var current_remote_frame = local_connect_status[queue].frame;
 				var new_remote_frame = input.frame;
-
+				trace('from:$current_remote_frame to $new_remote_frame');
 				assert(current_remote_frame == -1 || new_remote_frame == (current_remote_frame + 1));
 
-				sync.addRemoteInput(queue, input);
-				trace('setting remote connect status for queue $input to ${input.frame}');
+				var copy = new GameInput();
+				copy.init(input.frame, input.bits.sub(0, input.size));
+				sync.addRemoteInput(queue, copy);
+				trace('setting remote connect status for queue $queue to ${input.frame}');
 				local_connect_status[queue].frame = input.frame;
 			case Disconnected:
 				disconnectPlayer(queueToPlayerHandle(queue));

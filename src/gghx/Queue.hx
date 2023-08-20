@@ -19,7 +19,6 @@ class Queue<T> {
         var ni = (i + len) % data.length;
         len++;
         data[ni] = item;
-        i = ni;
     }
     public function pop(): Null<T> {
         if (len == 0) {
@@ -46,7 +45,7 @@ class QueueIterator<T> {
     public function new(data: Vector<T>, i: Int, j: Int) {
         this.data = data;
         this.i = i;
-        this.j = j;
+        this.j = j % data.length;
     }
     public function hasNext(): Bool {
         return i != j;
@@ -54,6 +53,6 @@ class QueueIterator<T> {
     public function next(): T {
         var res = data[i];
         i = (i + 1) % data.length;
-        return data[i++];
+        return res;
     }
 }

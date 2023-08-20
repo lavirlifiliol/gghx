@@ -1,2 +1,5 @@
 -p src
+-p examples/python/src/
+--main Main
 -L hxbit
+--python examples/python/bin/main.py
