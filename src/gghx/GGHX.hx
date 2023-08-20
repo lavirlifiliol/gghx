@@ -84,6 +84,8 @@ interface Callbacks {
 
 // one Networking instance is one "socket"
 interface Networking<Handle> {
+    var send_latency: Int; // artificial latency in ms, artificial ping (rtt) = 2*latency
+    var oop_percent: Int; // artificial packet loss in percent
     function handleEqual(one: Handle, two: Handle): Bool; 
     function newRemote(ip: String, port: Int): Handle;
     function send(data: Bytes, to: Handle): Void;

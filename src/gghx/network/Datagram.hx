@@ -8,7 +8,7 @@ import gghx.Poll.Poll;
 import gghx.network.DatagramMsg.Msg;
 
 class Datagram<Handle> {
-    var network: Networking<Handle>;
+    public var network: Networking<Handle>;
     var cb: (Msg, Handle) -> Void;
     var poll: Poll<Handle>;
     public function new() {

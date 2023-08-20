@@ -129,9 +129,12 @@ class DatagramProto<Handle> {
         num_players: Int,
         connect_status: Array<ConnectStatus>
     ) {
+        // network is null for the local endpoint
         if (network != null) {
             this.network = network;
             this.remote = network.newRemote(ip, port);
+            this.send_latency = network.network.send_latency;
+            this.oop_percent = network.network.oop_percent;
         }
         this.local_connect_status = connect_status;
         this.queue = queue;
@@ -147,8 +150,6 @@ class DatagramProto<Handle> {
             magic_number = Std.int(Math.random() * (1 << 16));
         } while (magic_number == 0);
         oo_packet = {send_time: 0, msg: null, dest_addr: null};
-        send_latency = 400;
-        oop_percent = 0;
         poll.registerLoop({onLoopPoll: (_) -> {
                 this.onLoopPoll();
                 return true;
