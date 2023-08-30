@@ -1,5 +1,6 @@
 package gghx.network;
 
+import gghx.Log.log;
 import gghx.network.DatagramMsg.MAX_COMPRESSED_BITS;
 import haxe.io.UInt32Array;
 import gghx.GGHX.NetworkStats;
@@ -168,16 +169,13 @@ class DatagramProto<Handle> {
 			assert(last.is_null() || last.frame + 1 == front.frame);
 			for (current in pending_output) {
 				if (current.bits.compare(last.bits) != 0) {
-					trace('##diff ', current.bits.toHex(), 'vs', last.bits.toHex());
 					for (i in 0...current.bits.length * 8) {
 						if (last.value(i) != current.value(i)) {
-							trace('  ##diff at $i', current.value(i), last.value(i), 'at $offset');
 							offset = msg_bits.setBit(offset);
 							offset = (if (current.value(i)) msg_bits.setBit else msg_bits.clearBit)(offset);
 							offset = msg_bits.writeByte(i, offset);
 						}
 					}
-					trace('##compressed to', msg_bits.sub(0, Math.ceil(offset / 8)).toHex());
 				}
 				offset = msg_bits.clearBit(offset);
 				last = last_sent_input = current;
@@ -216,14 +214,14 @@ class DatagramProto<Handle> {
 				{
 					var next_interval = if (roundtrips_remaining == NUM_SYNC_PACKETS) SYNC_FIRST_RETRY_INTERVAL else SYNC_RETRY_INTERVAL;
 					if (last_send_time != 0 && last_send_time + next_interval < nowv) {
-						trace('No luck syncing after $next_interval ms... Re-queueing sync packet');
+						log('No luck syncing after $next_interval ms... Re-queueing sync packet');
 						sendSyncRequest();
 					}
 				}
 			case Running(last_quality_report_time, last_network_stats_interval, last_input_packet_recv_time):
 				{
 					if (last_input_packet_recv_time == 0 || last_input_packet_recv_time + RUNNING_RETRY_INTERVAL < nowv) {
-						trace('Haven\'t exchanged packets in a while (last received:${last_received_input.frame} last sent: ${last_sent_input.frame}), Resending');
+						log('Haven\'t exchanged packets in a while (last received:${last_received_input.frame} last sent: ${last_sent_input.frame}), Resending');
 						sendPendingInput();
 						state = Running(last_quality_report_time, last_network_stats_interval, nowv);
 					}
@@ -237,20 +235,20 @@ class DatagramProto<Handle> {
 						state = Running(last_quality_report_time, nowv, last_input_packet_recv_time);
 					}
 					if (last_send_time != 0 && last_send_time + KEEP_ALIVE_INTERVAL < nowv) {
-						trace("Sending keep alive packet");
+						log("Sending keep alive packet");
 						sendMsg(MsgData.KeepAlive);
 					}
 					if (disconnect_timeout != 0
 						&& disconnect_notify_start != 0
 						&& !disconnect_notify_sent
 						&& (last_recv_time + disconnect_notify_start < nowv)) {
-						trace('Endpoint has stopped receiving packets for $disconnect_notify_start ms. Sending notification');
+						log('Endpoint has stopped receiving packets for $disconnect_notify_start ms. Sending notification');
 						queueEvent(Event.NetworkInterrupted(disconnect_timeout - disconnect_notify_start));
 						disconnect_notify_sent = true;
 					}
 					if (disconnect_timeout != 0 && (last_recv_time + disconnect_timeout < nowv)) {
 						if (!disconnect_event_sent) {
-							trace('Endpoint has stopped receiving packets for $disconnect_timeout ms. Disconnecting');
+							log('Endpoint has stopped receiving packets for $disconnect_timeout ms. Disconnecting');
 							queueEvent(Event.Disconnected);
 							disconnect_event_sent = true;
 						}
@@ -258,7 +256,7 @@ class DatagramProto<Handle> {
 				}
 			case Disconnected:
 				if (shutdown_timeout < nowv) {
-					trace("shutting down connection.");
+					log("shutting down connection.");
 					network = null;
 					shutdown_timeout = 0;
 				}
@@ -288,7 +286,7 @@ class DatagramProto<Handle> {
 			sequence_number: next_send_seq++,
 			data: msg_data
 		};
-		trace("send", msg);
+		log("send", msg);
 		packets_sent++;
 		last_send_time = now();
 		bytes_sent += Serializer.save(msg).length; // TODO not this
@@ -312,18 +310,18 @@ class DatagramProto<Handle> {
 		var seq = msg.sequence_number;
 		if (!msg.data.match(SyncRequest(_, _, _)) && !msg.data.match(SyncReply(_))) {
 			if (msg.magic != remote_magic_number) {
-				trace("recv rejecting", msg);
+				log("recv rejecting", msg);
 				return;
 			}
 
 			var skipped = mod(seq - next_recv_seq, 1 << 16);
 			if (skipped > MAX_SEQ_DISTANCE) {
-				trace('dropping out of order packets (seq:$seq last seq:$next_recv_seq)');
+				log('dropping out of order packets (seq:$seq last seq:$next_recv_seq)');
 				return;
 			}
 		}
 		next_recv_seq = seq;
-		trace("recv", msg);
+		log("recv", msg);
 		var handled = switch (msg.data) {
 			case Invalid:
 				onInvalid();
@@ -363,12 +361,12 @@ class DatagramProto<Handle> {
 		var bps = total_bytes_sent / seconds;
 		var overhead = 100 * (UDP_HEADER_SIZE * packets_sent) / (bytes_sent + 0.0001);
 		kbps_sent = Std.int(bps / 1024);
-		trace("Network stats -- ", 'Bandwidth $kbps_sent KBps  ',
+		log("Network stats -- ", 'Bandwidth $kbps_sent KBps  ',
 			'Packets sent $packets_sent (${1000 * packets_sent / (nowv - stats_start_time + 0.0001)} pps) ', 'KB sent: ${total_bytes_sent / 1024}');
 	}
 
 	function queueEvent(ev:Event) {
-		trace('Queing event from $queue', ev);
+		log('Queing event from $queue', ev);
 		event_queue.push(ev);
 	}
 
@@ -405,7 +403,7 @@ class DatagramProto<Handle> {
 	function onSyncRequest(msg:Msg, random_request:Int, remote_magic:Int, remote_endpoint:Int):Bool {
 		// the unusued arguments seem to be a constant 0
 		if (remote_magic != 0 && msg.magic != remote_magic) {
-			trace('Ignoring sync request from unknown endpoint (${msg.magic} != $remote_magic');
+			log('Ignoring sync request from unknown endpoint (${msg.magic} != $remote_magic');
 			return false;
 		}
 		sendMsg(SyncReply(random_request));
@@ -417,7 +415,7 @@ class DatagramProto<Handle> {
 			case Syncing(roundtrips_remaining, random):
 				{
 					if (random_reply != random) {
-						trace('sync reply $random != $random_reply. Keep looking');
+						log('sync reply $random != $random_reply. Keep looking');
 						return false;
 					}
 					if (!connected) {
@@ -425,10 +423,10 @@ class DatagramProto<Handle> {
 						connected = true;
 					}
 
-					trace('checking sync state ($roundtrips_remaining round trips remaining)');
+					log('checking sync state ($roundtrips_remaining round trips remaining)');
 					state = Syncing(roundtrips_remaining - 1, random);
 					if (roundtrips_remaining - 1 == 0) {
-						trace("synchronized");
+						log("synchronized");
 						queueEvent(Synchronized);
 						state = Running(0, 0, 0);
 						last_received_input = new GameInput();
@@ -441,7 +439,7 @@ class DatagramProto<Handle> {
 				}
 			default:
 				{
-					trace("ignoring SyncReply while not syncing");
+					log("ignoring SyncReply while not syncing");
 					return msg.magic == remote_magic_number;
 				}
 		}
@@ -450,7 +448,7 @@ class DatagramProto<Handle> {
 	public function onInput(msg:Msg, remote_status:Int32Array, start_frame:Int, disconnected:Bool, ack_frame:Int, num_bits:Int, input_size:Int, bits:Bytes) {
 		if (disconnected) {
 			if (!state.match(Disconnected) && !disconnect_event_sent) {
-				trace("Disconnecting endpoint on remote request");
+				log("Disconnecting endpoint on remote request");
 				queueEvent(Disconnected);
 				disconnect_event_sent = true;
 			}
@@ -470,27 +468,20 @@ class DatagramProto<Handle> {
 			var offset = 0;
 			var current_frame = start_frame;
 			if (last_received_input.is_null()) {
-				trace('starting at ${start_frame - 1}');
 				last_received_input.frame = start_frame - 1;
 			}
 			last_received_input.size = input_size;
 			while (offset < num_bits) {
-				trace('asserting with $current_frame and ${last_received_input.frame}');
 				assert(current_frame <= last_received_input.frame + 1);
 				var use_inputs = current_frame == last_received_input.frame + 1;
-				if (use_inputs) {
-					trace('##parsing $num_bits bits from', bits.toHex(), 'started at $offset');
-				}
 				while (bits.readBit(offset++)) {
 					var on = bits.readBit(offset++);
 					var button = bits.readByte(offset);
 					offset += 8;
 					if (use_inputs) {
-						trace('  ##diff', offset - 10, on, 'at', button);
 						if (on) {
 							last_received_input.set(button);
 						} else {
-							trace('##clear', button);
 							last_received_input.clear(button);
 						}
 					}
@@ -500,26 +491,24 @@ class DatagramProto<Handle> {
 					assert(current_frame == last_received_input.frame + 1);
 					last_received_input.frame = current_frame;
 
-					trace('##using', last_received_input.bits.toHex());
-
-					var desc = last_received_input.desc();
+					var desc = last_received_input.toString();
 					switch (state) {
 						case Running(last_quality_report_time, last_network_stats_interval, last_input_packet_recv_time):
 							state = Running(last_quality_report_time, last_network_stats_interval, now());
 						default:
 							assert(false);
 					}
-					trace('sending frame $current_frame to emu queue $queue ($desc)');
+					log('sending frame $current_frame to emu queue $queue ($desc)');
 					queueEvent(Input(last_received_input.copy()));
 				} else {
-					trace('Skipping past frame: ($current_frame) current is ${last_received_input.frame}');
+					log('Skipping past frame: ($current_frame) current is ${last_received_input.frame}');
 				}
 				current_frame++;
 			}
 		}
 		assert(last_received_input.frame >= last_received_frame);
 		while (pending_output.length > 0 && pending_output.front().frame < ack_frame) {
-			trace('Throwing away pending output frame ${pending_output.front().frame}');
+			log('Throwing away pending output frame ${pending_output.front().frame}');
 			last_acked_input = pending_output.pop();
 		}
 		return true;
@@ -527,7 +516,7 @@ class DatagramProto<Handle> {
 
 	public function onInputAck(msg:Msg, ack_frame:Int) {
 		while (pending_output.length > 0 && pending_output.front().frame < ack_frame) {
-			trace('Throwing away pending output frame ${pending_output.front().frame}');
+			log('Throwing away pending output frame ${pending_output.front().frame}');
 			last_acked_input = pending_output.pop();
 		}
 
@@ -594,7 +583,7 @@ class DatagramProto<Handle> {
 			}
 			if (oop_percent > 0 && oo_packet.msg == null && Math.random() * 100 < oop_percent) {
 				var delay = Std.int(Math.random() * (send_latency * 10 + 1000));
-				trace('creating rogue oop (seq: ${entry.msg.sequence_number} delay: $delay)');
+				log('creating rogue oop (seq: ${entry.msg.sequence_number} delay: $delay)');
 				oo_packet.send_time = now() + delay;
 				oo_packet.msg = entry.msg;
 				oo_packet.dest_addr = entry.dest_addr;
@@ -607,7 +596,7 @@ class DatagramProto<Handle> {
 			entry = send_queue.front();
 		}
 		if (oo_packet.msg != null && oo_packet.send_time < now()) {
-			trace("sending rogue oop");
+			log("sending rogue oop");
 			network.sendTo(Serializer.save(oo_packet.msg), oo_packet.dest_addr);
 			oo_packet.msg = null;
 		}

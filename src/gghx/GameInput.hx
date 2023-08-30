@@ -17,23 +17,23 @@ class GameInput {
 		return frame == -1;
 	}
 
-	public function desc():String {
+	public function toString():String {
 		return '(frame:$frame size:${bits.length} ${bits.toHex()})';
 	}
 
 	public function log(prefix:String):Void {
-		trace(prefix, desc());
+		Log.log(prefix, toString());
 	}
 
 	public function equal(other:GameInput, bitsonly:Bool) {
 		if (!bitsonly && (frame != other.frame)) {
-			trace('frames don\'t match $frame vs. ${other.frame}');
+			Log.log('frames don\'t match $frame vs. ${other.frame}');
 		}
 		if (bits.length != other.bits.length) {
-			trace('sizes don\'t match ${bits.length} vs. ${other.bits.length}');
+			Log.log('sizes don\'t match ${bits.length} vs. ${other.bits.length}');
 		}
 		if (bits.compare(other.bits) != 0) {
-			trace('bits don\'t match', bits.toHex(), 'vs', other.bits.toHex());
+			Log.log('bits don\'t match ${bits.toHex()} vs ${other.bits.toHex()}');
 		}
 		return (bitsonly || frame == other.frame) && bits.length == other.bits.length && bits.compare(other.bits) == 0;
 	}

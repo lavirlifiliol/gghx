@@ -35,6 +35,7 @@ class PyCallbacks implements Callbacks {
 	}
 
 	public function loadGameState(state:Bytes) {
+		trace('rolling back');
 		main.state = UInt16Array.fromBytes(state);
 	}
 
@@ -43,7 +44,7 @@ class PyCallbacks implements Callbacks {
 	}
 
 	public function advanceFrame() {
-		trace('used new callback');
+		trace('catching up');
 		main.stepSim(main.sess.syncInput());
 	}
 
@@ -126,7 +127,7 @@ class Main {
 	}
 
 	public function stepSim(inp:Vector<Null<Bytes>>) {
-		trace('**got inputs', inp.map((e) -> e.toHex()));
+		trace('got inputs', inp.map((e) -> e == null ? null : e.toHex()));
 		for (i in 0...2) {
 			if (inp.get(i) == null) {
 				this.state[i] = 512;

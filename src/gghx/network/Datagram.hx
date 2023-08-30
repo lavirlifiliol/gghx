@@ -1,5 +1,6 @@
 package gghx.network;
 
+import gghx.Log.log;
 import hxbit.Serializer;
 import gghx.Assert.assert;
 import haxe.io.Bytes;
@@ -27,10 +28,12 @@ class Datagram<Handle> {
 		cb = onMsg;
 		this.network = network;
 		this.poll = poll;
-		poll.registerLoop({onLoopPoll: (_) -> {
-			this.onLoopPoll();
-			return true;
-		}}, 0);
+		poll.registerLoop({
+			onLoopPoll: (_) -> {
+				this.onLoopPoll();
+				return true;
+			}
+		}, 0);
 	}
 
 	public function sendTo(data:Bytes, to:Handle) {
@@ -42,7 +45,7 @@ class Datagram<Handle> {
 		while (true) {
 			var data = network.recv();
 			if (data != null) {
-				trace('received len:${data.data.length} from ${data.from}');
+				log('received len:${data.data.length} from ${data.from}');
 				this.cb(Serializer.load(data.data, Msg), data.from);
 			} else {
 				break;

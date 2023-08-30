@@ -18,7 +18,7 @@ class GGError extends haxe.Exception {
 	}
 }
 
-enum abstract Error(Int) { // rather than return error codes, most functions will throw the error code
+enum abstract Error(Int) { // rather than return error codes, most functions will throw GGError
 	var OK = 0;
 	var SUCCESS = 0;
 	var GENERAL_FAILURE = -1;

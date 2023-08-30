@@ -78,14 +78,14 @@ class Sync {
 	public function addLocalInput(queue:Int, input:GameInput):Bool {
 		var frames_behind = framecount - last_confirmed_frame;
 		if (framecount >= max_prediction_frames && frames_behind >= max_prediction_frames) {
-			trace("rejecting input from emulator, ", "reached emulation barrier");
+			Log.log("rejecting input from emulator, ", "reached emulation barrier");
 			return false;
 		}
 		if (framecount == 0) {
 			saveCurrentFrame();
 		}
 
-		trace('sending undelayed local frame $framecount to queue $queue');
+		Log.log('sending undelayed local frame $framecount to queue $queue');
 		input.frame = framecount;
 		input_queues[queue].addInput(input);
 		return true;
@@ -137,7 +137,7 @@ class Sync {
 	public function adjustSimulation(seek_to:Int) {
 		var framecount = this.framecount;
 		var count = framecount - seek_to;
-		trace('Catching up', '');
+		Log.log('Catching up', '');
 		rollingback = true;
 		loadFrame(seek_to);
 		assert(this.framecount == seek_to);
@@ -148,18 +148,18 @@ class Sync {
 		}
 		assert(this.framecount == framecount);
 		rollingback = false;
-		trace("-------");
+		Log.log("-------");
 	}
 
 	public function loadFrame(frame:Int) {
 		if (frame == framecount) {
-			trace("skipping, NOP");
+			Log.log("skipping, NOP");
 			return;
 		}
 
 		saved_state.head = findSavedFrameIndex(frame);
 		var state = saved_state.frames[saved_state.head]; // unlike C++, this does not copy
-		trace('loading frame info ${state.frame} (size:${state.buf.length} chs:${state.checksum})');
+		Log.log('loading frame info ${state.frame} (size:${state.buf.length} chs:${state.checksum})');
 		callbacks.loadGameState(state.buf);
 
 		framecount = state.frame;
@@ -170,7 +170,7 @@ class Sync {
 		var res = callbacks.saveGameState(framecount);
 		saved_state.frames.set(saved_state.head, {buf: res.state, frame: framecount, checksum: res.checksum});
 		var state = saved_state.frames.get(saved_state.head);
-		trace('=== Saved frame info ${state.frame} (size:${state.buf.length} checksum${state.checksum})');
+		Log.log('=== Saved frame info ${state.frame} (size:${state.buf.length} checksum${state.checksum})');
 
 		saved_state.head = (saved_state.head + 1) % saved_state.frames.length;
 	}
@@ -205,14 +205,14 @@ class Sync {
 		var first_incorrect = -1;
 		for (i in 0...config.num_players) {
 			var incorrect = input_queues[i].getFirstIncorrectFrame();
-			trace('considering incorrect frame $incorrect reported by queue $i');
+			Log.log('considering incorrect frame $incorrect reported by queue $i');
 			if (incorrect != -1 && (first_incorrect == -1 || incorrect < first_incorrect)) {
 				first_incorrect = incorrect;
 			}
 		}
 
 		if (first_incorrect == -1) {
-			trace('prediction ok, proceeding');
+			Log.log('prediction ok, proceeding');
 			return -1;
 		}
 		return first_incorrect;
@@ -231,9 +231,5 @@ class Sync {
 	// unused, queue is never pushed to
 	public function getEvent():Null<SyncEvent> {
 		return event_queue.pop();
-	}
-
-	static public function main() {
-		trace('hi');
 	}
 }

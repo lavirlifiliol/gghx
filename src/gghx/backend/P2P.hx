@@ -1,9 +1,7 @@
 package gghx.backend;
 
 import gghx.network.DatagramMsg.Msg;
-import haxe.macro.PlatformConfig.CapturePolicy;
 import haxe.ds.Vector;
-import haxe.display.Display.Define;
 import gghx.GGHX.GGError;
 import gghx.Assert.assert;
 import gghx.Sync.MAX_PREDICTION_FRAMES;
@@ -15,7 +13,6 @@ import gghx.GGHX.Player;
 import gghx.GGHX.PlayerHandle;
 import gghx.network.Datagram;
 import haxe.io.Bytes;
-import gghx.backend.Session.DisconnectFlags;
 import gghx.GGHX.NetworkStats;
 
 final RECOMMENDATION_INTERVAL = 240;
@@ -92,11 +89,11 @@ class P2P<Handle> extends Session {
 				}
 
 				var total_min_confirmed:Int = if (num_players <= 2) poll2Players(current_frame) else pollNPlayers(current_frame);
-				trace('last confirmed frame in p2p backend is $total_min_confirmed');
+				Log.log('last confirmed frame in p2p backend is $total_min_confirmed');
 				if (total_min_confirmed >= 0) {
 					// todo spectactors
 				}
-				trace('setting confirmed frame in sync to $total_min_confirmed');
+				Log.log('setting confirmed frame in sync to $total_min_confirmed');
 				sync.setLastConfirmedFrame(total_min_confirmed);
 
 				if (current_frame > next_recommend_sleep) {
@@ -132,13 +129,13 @@ class P2P<Handle> extends Session {
 				total_min_confirmed = if (total_min_confirmed < last_frame) total_min_confirmed else last_frame;
 			}
 
-			trace(' local endp: connected = ${!local_connect_status[i].disconnected}, last_received: ${local_connect_status[i].frame}, total_min_confirmed: ${total_min_confirmed}');
+			Log.log(' local endp: connected = ${!local_connect_status[i].disconnected}, last_received: ${local_connect_status[i].frame}, total_min_confirmed: ${total_min_confirmed}');
 			if (!queue_connected && !local_connect_status[i].disconnected) {
-				trace('disconnecting i $i by remote request');
+				Log.log('disconnecting i $i by remote request');
 				disconnectPlayerQueue(i, total_min_confirmed);
 			}
 
-			trace('total_min_confirmed = $total_min_confirmed');
+			Log.log('total_min_confirmed = $total_min_confirmed');
 		}
 		return total_min_confirmed;
 	}
@@ -184,7 +181,7 @@ class P2P<Handle> extends Session {
 		}
 
 		if (input.frame != -1) {
-			trace('setting local connect status for local queue $queue to ${input.frame}');
+			Log.log('setting local connect status for local queue $queue to ${input.frame}');
 			local_connect_status[queue].frame = input.frame;
 
 			for (i in 0...num_players) {
@@ -203,7 +200,7 @@ class P2P<Handle> extends Session {
 	}
 
 	public override function incrementFrame() {
-		trace('!!!!!!!!!!!!!!!!!!!End of frame (${sync.getFrameCount()})');
+		Log.log('!!!!!!!!!!!!!!!!!!!End of frame (${sync.getFrameCount()})');
 		sync.incrementFrame();
 		doPoll(0);
 		pollSyncEvents();
@@ -227,16 +224,16 @@ class P2P<Handle> extends Session {
 		onDatagramProtocolEvent(evt, queueToPlayerHandle(queue));
 		switch (evt) {
 			case Input(input):
-				trace('handling input in $queue', input);
+				Log.log('handling input in $queue', input);
 				var current_remote_frame = local_connect_status[queue].frame;
 				var new_remote_frame = input.frame;
-				trace('from:$current_remote_frame to $new_remote_frame');
+				Log.log('from:$current_remote_frame to $new_remote_frame');
 				assert(current_remote_frame == -1 || new_remote_frame == (current_remote_frame + 1));
 
 				var copy = new GameInput();
 				copy.init(input.frame, input.bits.sub(0, input.size));
 				sync.addRemoteInput(queue, copy);
-				trace('setting remote connect status for queue $queue to ${input.frame}');
+				Log.log('setting remote connect status for queue $queue to ${input.frame}');
 				local_connect_status[queue].frame = input.frame;
 			case Disconnected:
 				disconnectPlayer(queueToPlayerHandle(queue));
@@ -274,7 +271,7 @@ class P2P<Handle> extends Session {
 		if (!endpoints[queue].isInitialized()) {
 			// assume this is the local player
 			var current_frame = sync.getFrameCount();
-			trace('disconnecting local player $queue at frame ${local_connect_status[queue].frame} by user request');
+			Log.log('disconnecting local player $queue at frame ${local_connect_status[queue].frame} by user request');
 
 			for (i in 0...num_players) {
 				if (endpoints[i].isInitialized()) {
@@ -282,7 +279,7 @@ class P2P<Handle> extends Session {
 				}
 			}
 		} else {
-			trace('disconnecting queue $queue at frame ${local_connect_status[queue].frame} by user request');
+			Log.log('disconnecting queue $queue at frame ${local_connect_status[queue].frame} by user request');
 			disconnectPlayerQueue(queue, local_connect_status[queue].frame);
 		}
 	}
@@ -291,15 +288,15 @@ class P2P<Handle> extends Session {
 		var framecount = sync.getFrameCount();
 		endpoints[queue].disconnect();
 
-		trace('Changing queue $queue local connect status for last frame from ${local_connect_status[queue].frame} to $syncto on disconnect request (current: $framecount)');
+		Log.log('Changing queue $queue local connect status for last frame from ${local_connect_status[queue].frame} to $syncto on disconnect request (current: $framecount)');
 
 		local_connect_status[queue].disconnected = true;
 		local_connect_status[queue].frame = syncto;
 
 		if (syncto < framecount) {
-			trace('adjusting simulation to account for disconnect by $queue @$syncto');
+			Log.log('adjusting simulation to account for disconnect by $queue @$syncto');
 			sync.adjustSimulation(syncto);
-			trace('finished adjusting simulation');
+			Log.log('finished adjusting simulation');
 		}
 
 		callbacks.onEvent(DISCONNECTED_FROM_PEER(queueToPlayerHandle(queue)));

@@ -38,7 +38,7 @@ class TimeSync {
 		count++;
 
 		var sleep_frames = Math.ceil((radvantage - advantage) / 2);
-		trace("iteration ", count, ": sleep frames is", sleep_frames);
+		Log.log("iteration ", count, ": sleep frames is", sleep_frames);
 
 		if (sleep_frames < MIN_FRAME_ADVANTAGE) {
 			return 0;
@@ -47,7 +47,7 @@ class TimeSync {
 		if (require_idle_input) {
 			for (i in 1...last_inputs.length) {
 				if (!last_inputs[i].equal(last_inputs[0], true)) {
-					trace("iteration ", count, ": reject due to input at position ", i);
+					Log.log("iteration ", count, ": reject due to input at position ", i);
 					return 0;
 				}
 			}

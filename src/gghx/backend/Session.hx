@@ -24,10 +24,6 @@ abstract class Session {
 
 	public abstract function getNetworkStats(player:PlayerHandle):NetworkStats;
 
-	public function log(...args:String):Void {
-		trace("GGHX:", args);
-	}
-
 	public function setFrameDelay(player:PlayerHandle, delay:Int):Void {
 		throw new GGError(UNSUPPORTED);
 	}
@@ -40,5 +36,3 @@ abstract class Session {
 		throw new GGError(UNSUPPORTED);
 	}
 }
-
-abstract DisconnectFlags(Int) from Int to Int {}
