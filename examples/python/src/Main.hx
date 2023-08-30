@@ -97,12 +97,12 @@ class Main {
 		var s = PygameDisp.set_mode(Tuple2.make(480, 480));
 		while (running) {
 			for (ev in PygameEvent.get().toHaxeIterable()) {
-				if (Syntax.field(ev, 'type') == Syntax.field(Pygame, 'QUIT')) {
+				if (ev.type == Pygame.QUIT) {
 					running = false;
 				}
 			}
 
-			sess.doPoll(1); // the timeout is just ignored lul
+			sess.doPoll(1); // the timeout is ignored
 			runFrame();
 
 			drawFrame(s);
@@ -120,7 +120,7 @@ class Main {
 			if (shere > 255) { // input was null
 				color = "purple";
 			} else {
-				color = Syntax.callField(Pygame, "Color", shere, shere, shere);
+				color = new PygameColor(shere, shere, shere);
 			}
 			PygameDraw.circle(s, color, Tuple2.make(100 + 200 * i, shere + 100), 50);
 		}
@@ -147,7 +147,7 @@ class Main {
 
 	function runFrame() {
 		var input:Bytes = Bytes.alloc(1);
-		if (Syntax.arrayAccess(PygameKey.get_pressed(), 119)) {
+		if (Syntax.arrayAccess(PygameKey.get_pressed(), Pygame.K_w)) {
 			input.set(0, 1);
 		} else {
 			input.set(0, 0);
